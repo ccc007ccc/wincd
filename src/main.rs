@@ -58,8 +58,9 @@ fn run() -> Result<()> {
 
     // 处理 --init
     if let Some(shell_name) = &cli.init {
-        let sh = shell::Shell::from_str(shell_name)
-            .ok_or_else(|| anyhow::anyhow!("不支持的 shell: {}（支持 bash/zsh/fish）", shell_name))?;
+        let sh = shell::Shell::from_str(shell_name).ok_or_else(|| {
+            anyhow::anyhow!("不支持的 shell: {}（支持 bash/zsh/fish）", shell_name)
+        })?;
         print!("{}", shell::init_script(sh));
         return Ok(());
     }

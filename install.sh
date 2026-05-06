@@ -6,7 +6,6 @@ set -e
 
 REPO="ccc007ccc/wincd"
 INSTALL_DIR="${HOME}/.local/bin"
-BINARY_NAME="wincd"
 
 # 颜色
 RED='\033[0;31m'
@@ -51,7 +50,7 @@ get_latest_version() {
 }
 
 main() {
-    local arch os version asset_name download_url
+    local arch os version asset_name download_url wcd_asset wcd_url
     arch=$(detect_arch)
     os=$(detect_os)
 
@@ -63,26 +62,35 @@ main() {
     # 构建下载文件名
     if [ "$os" = "windows" ]; then
         asset_name="wincd-windows-${arch}.exe"
-        BINARY_NAME="wincd.exe"
+        wcd_asset="wcd-windows-${arch}.exe"
     else
         asset_name="wincd-linux-${arch}"
+        wcd_asset="wcd-linux-${arch}"
     fi
 
     download_url="https://github.com/${REPO}/releases/download/${version}/${asset_name}"
+    wcd_url="https://github.com/${REPO}/releases/download/${version}/${wcd_asset}"
 
     # 创建安装目录
     mkdir -p "$INSTALL_DIR"
 
-    # 下载二进制
+    # 下载 wincd
     info "下载 ${asset_name}..."
-    curl -fsSL "$download_url" -o "${INSTALL_DIR}/${BINARY_NAME}"
-    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+    curl -fsSL "$download_url" -o "${INSTALL_DIR}/wincd"
+    chmod +x "${INSTALL_DIR}/wincd"
 
-    info "安装完成: ${INSTALL_DIR}/${BINARY_NAME}"
+    # 下载 wcd
+    info "下载 ${wcd_asset}..."
+    curl -fsSL "$wcd_url" -o "${INSTALL_DIR}/wcd"
+    chmod +x "${INSTALL_DIR}/wcd"
+
+    info "安装完成:"
+    info "  ${INSTALL_DIR}/wincd"
+    info "  ${INSTALL_DIR}/wcd"
 
     # 检查 PATH
     if echo "$PATH" | grep -q "$INSTALL_DIR"; then
-        info "已可以使用 wincd 命令"
+        info "已可以使用 wincd / wcd 命令"
     else
         warn "${INSTALL_DIR} 不在 PATH 中"
         echo ""
@@ -97,7 +105,8 @@ main() {
 
     # 提示 shell 集成
     echo ""
-    info "要启用 wcd 命令（直接 cd），请运行:"
+    info "提示: wcd 可以直接输出转换后的路径"
+    info "要让 wcd 自动 cd（推荐），请运行:"
     echo ""
     echo "  echo 'eval \"\$(wincd --init bash)\"' >> ~/.bashrc"
     echo ""

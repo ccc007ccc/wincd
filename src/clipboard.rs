@@ -4,9 +4,7 @@ use anyhow::{Context, Result};
 /// 从系统剪贴板读取文本内容
 pub fn read_clipboard() -> Result<String> {
     let mut ctx = arboard::Clipboard::new().context("无法访问系统剪贴板")?;
-    let text = ctx
-        .get_text()
-        .context("无法读取剪贴板文本")?;
+    let text = ctx.get_text().context("无法读取剪贴板文本")?;
     Ok(text)
 }
 
@@ -25,10 +23,7 @@ pub fn read_clipboard_path() -> Result<String> {
         || (cleaned.len() >= 2 && cleaned.as_bytes()[1] == b':');
 
     if !looks_like_path {
-        anyhow::bail!(
-            "剪贴板内容不像路径: {}",
-            truncate(&cleaned, 60)
-        );
+        anyhow::bail!("剪贴板内容不像路径: {}", truncate(&cleaned, 60));
     }
 
     Ok(cleaned)

@@ -5,10 +5,18 @@ edition = "2021"
 description = "WSL 下一步到位的 Windows 路径导航工具 — 粘贴 Windows 路径，直接 cd"
 authors = ["ccc007ccc"]
 license = "MIT"
-repository = "https://github.com/ccc007/wincd"
+repository = "https://github.com/ccc007ccc/wincd"
 keywords = ["wsl", "windows", "path", "cd", "navigation"]
 categories = ["command-line-utilities"]
 readme = "README.md"
+
+[[bin]]
+name = "wincd"
+path = "src/main.rs"
+
+[[bin]]
+name = "wcd"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

@@ -109,9 +109,17 @@ impl Converter {
                     .next()
                     .ok_or_else(|| ConvertError::UnrecognizedFormat(input.to_string()))?;
                 if drive_char.is_ascii_alphabetic() {
-                    let path_part = rest.strip_prefix(drive_char).unwrap_or("").trim_start_matches('/');
+                    let path_part = rest
+                        .strip_prefix(drive_char)
+                        .unwrap_or("")
+                        .trim_start_matches('/');
                     let sep = if mixed { "/" } else { "\\" };
-                    let win_path = format!("{}:{}{}", drive_char.to_uppercase(), sep, path_part.replace('/', sep));
+                    let win_path = format!(
+                        "{}:{}{}",
+                        drive_char.to_uppercase(),
+                        sep,
+                        path_part.replace('/', sep)
+                    );
                     return Ok(ConvertResult {
                         original: input.to_string(),
                         converted: win_path,
@@ -205,9 +213,7 @@ impl Default for Converter {
 pub fn clean_path_input(input: &str) -> String {
     let mut s = input.trim();
     // 去除成对的引号
-    while (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
+    while (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         s = &s[1..s.len() - 1];
     }
     s.trim().to_string()
@@ -216,10 +222,7 @@ pub fn clean_path_input(input: &str) -> String {
 /// 提取盘符字母（如 C:\ 中的 'C'）
 fn extract_drive_letter(path: &str) -> Option<char> {
     let bytes = path.as_bytes();
-    if bytes.len() >= 2
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-    {
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         Some(bytes[0].to_ascii_lowercase() as char)
     } else {
         None
