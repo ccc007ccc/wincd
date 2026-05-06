@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            asset_name: wincd-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            asset_name: wincd-linux-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            asset_name: wincd-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 安装交叉编译工具 (ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 构建
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 重命名二进制 (Linux)
+        if: runner.os == 'Linux'
+        run: cp target/${{ matrix.target }}/release/wincd ${{ matrix.asset_name }}
+
+      - name: 重命名二进制 (Windows)
+        if: runner.os == 'Windows'
+        run: cp target/${{ matrix.target }}/release/wincd.exe ${{ matrix.asset_name }}
+
+      - name: 计算 SHA256
+        if: runner.os == 'Linux'
+        run: sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+
+      - name: 计算 SHA256 (Windows)
+        if: runner.os == 'Windows'
+        run: certutil -hashfile ${{ matrix.asset_name }} SHA256 > ${{ matrix.asset_name }}.sha256
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            ${{ matrix.asset_name }}
+            ${{ matrix.asset_name }}.sha256
+
+  release:
+    name: 创建 Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载所有产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理产物
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*

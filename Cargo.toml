@@ -1,0 +1,25 @@
+[package]
+name = "wincd"
+version = "1.0.0"
+edition = "2021"
+description = "WSL 下一步到位的 Windows 路径导航工具 — 粘贴 Windows 路径，直接 cd"
+authors = ["ccc007ccc"]
+license = "MIT"
+repository = "https://github.com/ccc007/wincd"
+keywords = ["wsl", "windows", "path", "cd", "navigation"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+thiserror = "2"
+owo-colors = "4"
+arboard = "3"
+dirs = "6"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
