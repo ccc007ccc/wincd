@@ -47,6 +47,10 @@ struct Cli {
     #[arg(long = "setup")]
     setup: bool,
 
+    /// 卸载：移除 shell 集成、补全脚本和二进制
+    #[arg(long = "uninstall")]
+    uninstall: bool,
+
     /// 禁用彩色输出
     #[arg(long = "no-color")]
     no_color: bool,
@@ -72,6 +76,11 @@ fn run() -> Result<()> {
     // 处理 --setup
     if cli.setup {
         return do_setup();
+    }
+
+    // 处理 --uninstall
+    if cli.uninstall {
+        return do_uninstall();
     }
 
     // 获取输入路径：参数 或 剪贴板
@@ -228,6 +237,114 @@ fn do_setup() -> Result<()> {
     eprintln!();
     eprintln!("之后就可以直接使用 wcd 命令了:");
     eprintln!("  wcd 'C:\\code\\Rust'");
+
+    Ok(())
+}
+
+/// 卸载：移除 shell 集成、补全脚本、二进制
+fn do_uninstall() -> Result<()> {
+    let shell_path = std::env::var("SHELL").unwrap_or_default();
+    let sh = if shell_path.contains("zsh") {
+        shell::Shell::Zsh
+    } else if shell_path.contains("fish") {
+        shell::Shell::Fish
+    } else {
+        shell::Shell::Bash
+    };
+
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("无法获取 home 目录"))?;
+
+    eprintln!("{} 检测到 shell: {:?}", "信息:".green().bold(), sh);
+
+    // 移除 rc 文件中的集成代码
+    let rc_file = match sh {
+        shell::Shell::Bash => home.join(".bashrc"),
+        shell::Shell::Zsh => home.join(".zshrc"),
+        shell::Shell::Fish => home.join(".config/fish/conf.d/wincd.fish"),
+    };
+
+    if rc_file.exists() {
+        let content = std::fs::read_to_string(&rc_file)?;
+        let marker = "# wincd integration";
+        if let Some(start) = content.find(marker) {
+            // 找到 marker 位置，向前找到段落开头（空行）
+            let before = &content[..start];
+            let trim_end = before.trim_end().len();
+            // 从 marker 开始向下找到段落结尾（下一个空行或文件结尾）
+            let after_marker = &content[start..];
+            let end_offset = after_marker
+                .find("\n\n")
+                .map(|i| i + 2)
+                .unwrap_or(after_marker.len());
+
+            let new_content = format!("{}{}", &content[..trim_end], &after_marker[end_offset..]);
+            std::fs::write(&rc_file, new_content)?;
+            eprintln!(
+                "{} 已从 {} 移除 shell 集成",
+                "成功:".green().bold(),
+                rc_file.display()
+            );
+        } else {
+            eprintln!(
+                "{} {} 中未找到 wincd 集成代码",
+                "提示:".yellow().bold(),
+                rc_file.display()
+            );
+        }
+    }
+
+    // 移除补全脚本
+    let completion_file = match sh {
+        shell::Shell::Bash => home.join(".local/share/bash-completion/completions/wincd"),
+        shell::Shell::Zsh => home.join(".zfunc/_wincd"),
+        shell::Shell::Fish => home.join(".config/fish/completions/wincd.fish"),
+    };
+
+    if completion_file.exists() {
+        std::fs::remove_file(&completion_file)?;
+        eprintln!(
+            "{} 已移除补全脚本 {}",
+            "成功:".green().bold(),
+            completion_file.display()
+        );
+    }
+
+    // 移除二进制
+    let exe = std::env::current_exe().ok();
+    if let Some(exe_path) = &exe {
+        // 确认二进制在 ~/.local/bin 下，避免误删
+        if exe_path.starts_with(home.join(".local/bin")) {
+            eprintln!(
+                "{} 发现二进制: {}",
+                "信息:".green().bold(),
+                exe_path.display()
+            );
+            eprint!("是否删除二进制文件? [y/N] ");
+            std::io::stderr().flush()?;
+
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() == "y" {
+                // 不能删除正在运行的二进制（Linux 上可以 unlink），先尝试
+                std::fs::remove_file(exe_path)?;
+                eprintln!(
+                    "{} 已删除二进制 {}",
+                    "成功:".green().bold(),
+                    exe_path.display()
+                );
+            } else {
+                eprintln!("{} 跳过删除二进制", "提示:".yellow().bold());
+            }
+        }
+    }
+
+    eprintln!();
+    eprintln!("{} 卸载完成", "成功:".green().bold());
+    eprintln!("请运行以下命令使变更生效:");
+    match sh {
+        shell::Shell::Fish => eprintln!("  source {}", rc_file.display()),
+        _ => eprintln!("  source {}", rc_file.display()),
+    }
 
     Ok(())
 }
