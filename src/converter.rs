@@ -1,4 +1,7 @@
+//! Windows ↔ WSL 路径转换核心
+
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -11,16 +14,12 @@ pub enum ConvertError {
     InvalidUnc(String),
 }
 
-/// 转换方向
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// Windows → WSL
     ToWsl,
-    /// WSL → Windows
     ToWindows,
 }
 
-/// 转换结果
 #[derive(Debug, Clone)]
 pub struct ConvertResult {
     pub original: String,
@@ -28,40 +27,42 @@ pub struct ConvertResult {
     pub direction: Direction,
 }
 
-/// 核心转换器
 pub struct Converter {
-    /// WSL 挂载前缀，默认 /mnt
     mount_prefix: String,
 }
 
 impl Converter {
     pub fn new() -> Self {
         Self {
-            mount_prefix: detect_mount_prefix(),
+            mount_prefix: detect_mount_prefix().to_string(),
         }
     }
 
-    #[cfg(test)]
     pub fn with_mount_prefix(prefix: &str) -> Self {
         Self {
             mount_prefix: prefix.to_string(),
         }
     }
 
-    /// 将 Windows 路径转换为 WSL 路径
+    pub fn mount_prefix(&self) -> &str {
+        &self.mount_prefix
+    }
+
     pub fn to_wsl(&self, input: &str) -> Result<ConvertResult, ConvertError> {
         let trimmed = clean_path_input(input);
 
-        // 已经是 WSL 路径，直接返回
+        if trimmed.is_empty() {
+            return Err(ConvertError::UnrecognizedFormat(input.to_string()));
+        }
+
         if trimmed.starts_with('/') {
             return Ok(ConvertResult {
                 original: input.to_string(),
-                converted: trimmed.to_string(),
+                converted: trimmed,
                 direction: Direction::ToWsl,
             });
         }
 
-        // ~ 展开
         if trimmed == "~" || trimmed.starts_with("~/") {
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
             let rest = trimmed.strip_prefix('~').unwrap_or("");
@@ -72,12 +73,10 @@ impl Converter {
             });
         }
 
-        // UNC 路径 \\wsl$\... 或 \\wsl.localhost\...
         if trimmed.starts_with("\\\\") || trimmed.starts_with("//") {
             return self.convert_unc(&trimmed, input);
         }
 
-        // Windows 盘符路径 X:\... 或 X:/...
         if let Some(drive) = extract_drive_letter(&trimmed) {
             return self.convert_drive_path(drive, &trimmed, input);
         }
@@ -85,7 +84,6 @@ impl Converter {
         Err(ConvertError::UnrecognizedFormat(input.to_string()))
     }
 
-    /// 将 WSL 路径转换为 Windows 路径
     pub fn to_windows(&self, input: &str, mixed: bool) -> Result<ConvertResult, ConvertError> {
         let trimmed = clean_path_input(input);
 
@@ -93,21 +91,13 @@ impl Converter {
             return Err(ConvertError::UnrecognizedFormat(input.to_string()));
         }
 
-        // /mnt/x/... → X:\... 或 X:/...
         let prefix = format!("{}/", self.mount_prefix);
         if trimmed.starts_with(&prefix) || trimmed == self.mount_prefix {
             let rest = trimmed
                 .strip_prefix(&prefix)
                 .or_else(|| trimmed.strip_prefix(&self.mount_prefix))
                 .unwrap_or("");
-            if !rest.is_empty() {
-                let drive_char = rest
-                    .split('/')
-                    .next()
-                    .unwrap_or("")
-                    .chars()
-                    .next()
-                    .ok_or_else(|| ConvertError::UnrecognizedFormat(input.to_string()))?;
+            if let Some(drive_char) = rest.chars().next() {
                 if drive_char.is_ascii_alphabetic() {
                     let path_part = rest
                         .strip_prefix(drive_char)
@@ -116,7 +106,7 @@ impl Converter {
                     let sep = if mixed { "/" } else { "\\" };
                     let win_path = format!(
                         "{}:{}{}",
-                        drive_char.to_uppercase(),
+                        drive_char.to_ascii_uppercase(),
                         sep,
                         path_part.replace('/', sep)
                     );
@@ -129,16 +119,12 @@ impl Converter {
             }
         }
 
-        // /home/user/... → \\wsl$\DISTRO\home\user\...
         let distro = detect_distro_name();
+        let body = trimmed.trim_start_matches('/');
         let win_path = if mixed {
-            format!("//wsl$/{}/{}", distro, trimmed.trim_start_matches('/'))
+            format!("//wsl$/{}/{}", distro, body)
         } else {
-            format!(
-                "\\\\wsl$\\{}\\{}",
-                distro,
-                trimmed.trim_start_matches('/').replace('/', "\\")
-            )
+            format!("\\\\wsl$\\{}\\{}", distro, body.replace('/', "\\"))
         };
 
         Ok(ConvertResult {
@@ -148,10 +134,13 @@ impl Converter {
         })
     }
 
-    /// 转换 UNC 路径
     fn convert_unc(&self, cleaned: &str, original: &str) -> Result<ConvertResult, ConvertError> {
         let normalized = cleaned.replace('\\', "/");
-        let parts: Vec<&str> = normalized.trim_start_matches('/').split('/').collect();
+        let parts: Vec<&str> = normalized
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|p| !p.is_empty())
+            .collect();
 
         if parts.len() < 2 {
             return Err(ConvertError::InvalidUnc(original.to_string()));
@@ -159,13 +148,12 @@ impl Converter {
 
         let server = parts[0];
 
-        // \\wsl$\DISTRO\path 或 \\wsl.localhost\DISTRO\path
-        if server == "wsl$" || server == "wsl.localhost" {
-            if parts.len() < 3 {
-                return Err(ConvertError::InvalidUnc(original.to_string()));
-            }
-            // parts[1] = distro, parts[2..] = path
-            let path = parts[2..].join("/");
+        if server == "wsl$" || server.eq_ignore_ascii_case("wsl.localhost") {
+            let path = if parts.len() >= 3 {
+                parts[2..].join("/")
+            } else {
+                String::new()
+            };
             return Ok(ConvertResult {
                 original: original.to_string(),
                 converted: format!("/{}", path),
@@ -173,7 +161,6 @@ impl Converter {
             });
         }
 
-        // 普通 UNC \\server\share\path → /mnt/unc/server/share/path
         let unc_path = parts.join("/");
         Ok(ConvertResult {
             original: original.to_string(),
@@ -182,19 +169,25 @@ impl Converter {
         })
     }
 
-    /// 转换盘符路径
     fn convert_drive_path(
         &self,
         drive: char,
         cleaned: &str,
         original: &str,
     ) -> Result<ConvertResult, ConvertError> {
-        // 跳过盘符和冒号，如 "C:" → 跳过 2 字符
+        if cleaned.len() < 2 {
+            return Err(ConvertError::InvalidDrive(drive));
+        }
         let rest = &cleaned[2..];
         let rest = rest.replace('\\', "/");
         let rest = rest.trim_start_matches('/');
 
-        let wsl_path = format!("{}/{}/{}", self.mount_prefix, drive.to_lowercase(), rest);
+        let wsl_path = format!(
+            "{}/{}/{}",
+            self.mount_prefix,
+            drive.to_ascii_lowercase(),
+            rest
+        );
         Ok(ConvertResult {
             original: original.to_string(),
             converted: wsl_path,
@@ -209,18 +202,17 @@ impl Default for Converter {
     }
 }
 
-/// 清理路径输入：去除首尾空白、引号
 pub fn clean_path_input(input: &str) -> String {
     let mut s = input.trim();
-    // 去除成对的引号
-    while (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
+    while s.len() >= 2
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+    {
         s = &s[1..s.len() - 1];
     }
     s.trim().to_string()
 }
 
-/// 提取盘符字母（如 C:\ 中的 'C'）
-fn extract_drive_letter(path: &str) -> Option<char> {
+pub fn extract_drive_letter(path: &str) -> Option<char> {
     let bytes = path.as_bytes();
     if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         Some(bytes[0].to_ascii_lowercase() as char)
@@ -229,37 +221,90 @@ fn extract_drive_letter(path: &str) -> Option<char> {
     }
 }
 
-/// 检测 WSL 挂载前缀
-fn detect_mount_prefix() -> String {
-    // 读取 /etc/wsl.conf 中的 [automount] root 配置
-    if let Ok(content) = std::fs::read_to_string("/etc/wsl.conf") {
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("root") && trimmed.contains('=') {
-                if let Some(val) = trimmed.split('=').nth(1) {
-                    let val = val.trim().trim_matches('"').trim_matches('/');
-                    if !val.is_empty() {
-                        return format!("/{}", val);
-                    }
+static MOUNT_PREFIX: OnceLock<String> = OnceLock::new();
+static DISTRO_NAME: OnceLock<String> = OnceLock::new();
+
+fn detect_mount_prefix() -> &'static str {
+    MOUNT_PREFIX
+        .get_or_init(|| read_mount_prefix_from_conf().unwrap_or_else(|| "/mnt".to_string()))
+        .as_str()
+}
+
+fn read_mount_prefix_from_conf() -> Option<String> {
+    let content = std::fs::read_to_string("/etc/wsl.conf").ok()?;
+    let mut in_automount = false;
+    for raw in content.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(stripped) = line.strip_prefix('[') {
+            if let Some(name) = stripped.strip_suffix(']') {
+                in_automount = name.trim().eq_ignore_ascii_case("automount");
+                continue;
+            }
+        }
+        if !in_automount {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            if k.trim().eq_ignore_ascii_case("root") {
+                let val = v.trim().trim_matches('"').trim_matches('\'');
+                let val = val.trim_end_matches('/');
+                if !val.is_empty() {
+                    let prefix = if val.starts_with('/') {
+                        val.to_string()
+                    } else {
+                        format!("/{}", val)
+                    };
+                    return Some(prefix);
                 }
             }
         }
     }
-    "/mnt".to_string()
+    None
 }
 
-/// 检测当前 WSL 发行版名称
-fn detect_distro_name() -> String {
-    // 方法1：读取 /etc/os-release
-    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
-        for line in content.lines() {
-            if let Some(val) = line.strip_prefix("PRETTY_NAME=") {
-                return val.trim_matches('"').to_string();
-            }
+pub fn detect_distro_name() -> &'static str {
+    DISTRO_NAME
+        .get_or_init(|| {
+            std::env::var("WSL_DISTRO_NAME")
+                .ok()
+                .or_else(read_distro_from_os_release)
+                .unwrap_or_else(|| "Ubuntu".to_string())
+        })
+        .as_str()
+}
+
+fn read_distro_from_os_release() -> Option<String> {
+    let content = std::fs::read_to_string("/etc/os-release").ok()?;
+    let mut id: Option<String> = None;
+    let mut version_id: Option<String> = None;
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("ID=") {
+            id = Some(v.trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(v) = line.strip_prefix("VERSION_ID=") {
+            version_id = Some(v.trim_matches('"').trim_matches('\'').to_string());
         }
     }
-    // 方法2：环境变量
-    std::env::var("WSL_DISTRO_NAME").unwrap_or_else(|_| "Ubuntu".to_string())
+    let id = id?;
+    let mut name = capitalize(&id);
+    if let Some(v) = version_id {
+        if !v.is_empty() {
+            name.push('-');
+            name.push_str(&v);
+        }
+    }
+    Some(name)
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -374,10 +419,24 @@ mod tests {
     }
 
     #[test]
+    fn test_clean_path_input_short_quote_does_not_panic() {
+        assert_eq!(clean_path_input("\""), "\"");
+        assert_eq!(clean_path_input("'"), "'");
+        assert_eq!(clean_path_input(""), "");
+    }
+
+    #[test]
     fn test_extract_drive_letter() {
         assert_eq!(extract_drive_letter("C:\\foo"), Some('c'));
         assert_eq!(extract_drive_letter("d:/bar"), Some('d'));
         assert_eq!(extract_drive_letter("/home"), None);
         assert_eq!(extract_drive_letter("foo"), None);
+    }
+
+    #[test]
+    fn test_capitalize() {
+        assert_eq!(capitalize("ubuntu"), "Ubuntu");
+        assert_eq!(capitalize("debian"), "Debian");
+        assert_eq!(capitalize(""), "");
     }
 }

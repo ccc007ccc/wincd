@@ -13,12 +13,21 @@ jobs:
     name: 构建 ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             asset_name: wincd-linux-amd64
+            cross: false
           - target: aarch64-unknown-linux-gnu
             asset_name: wincd-linux-arm64
+            cross: true
+          - target: x86_64-unknown-linux-musl
+            asset_name: wincd-linux-amd64-musl
+            cross: false
+          - target: aarch64-unknown-linux-musl
+            asset_name: wincd-linux-arm64-musl
+            cross: true
 
     steps:
       - uses: actions/checkout@v4
@@ -28,29 +37,40 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: 安装交叉编译工具 (ARM64)
+      - name: 安装 musl 工具链
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: 安装交叉编译工具 (ARM64 GNU)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
+      - name: 安装交叉编译工具 (ARM64 musl)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
       - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.target }}
 
       - name: 构建
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: 整理产物
+      - name: 整理产物 + 校验和
         run: |
           cp target/${{ matrix.target }}/release/wincd ${{ matrix.asset_name }}
           sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          ls -la ${{ matrix.asset_name }}*
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -72,13 +92,22 @@ jobs:
         with:
           path: artifacts
 
-      - name: 整理产物
+      - name: 整理 release 文件夹
         run: |
           mkdir -p release
-          find artifacts -type f -exec cp {} release/ \;
+          find artifacts -type f \( -name 'wincd-*' \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: 生成统一 SHA256SUMS
+        run: |
+          cd release
+          sha256sum wincd-* | grep -v '\.sha256$' > SHA256SUMS
+          cat SHA256SUMS
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: release/*
+          files: |
+            release/wincd-*
+            release/SHA256SUMS
