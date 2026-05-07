@@ -6,14 +6,15 @@ pub enum Shell {
     Fish,
 }
 
-impl Shell {
-    /// 从字符串解析 shell 类型
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for Shell {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "bash" => Some(Shell::Bash),
-            "zsh" => Some(Shell::Zsh),
-            "fish" => Some(Shell::Fish),
-            _ => None,
+            "bash" => Ok(Shell::Bash),
+            "zsh" => Ok(Shell::Zsh),
+            "fish" => Ok(Shell::Fish),
+            _ => Err(format!("不支持的 shell: {}（支持 bash/zsh/fish）", s)),
         }
     }
 }
@@ -92,10 +93,10 @@ mod tests {
 
     #[test]
     fn test_shell_from_str() {
-        assert_eq!(Shell::from_str("bash"), Some(Shell::Bash));
-        assert_eq!(Shell::from_str("ZSH"), Some(Shell::Zsh));
-        assert_eq!(Shell::from_str("Fish"), Some(Shell::Fish));
-        assert_eq!(Shell::from_str("powershell"), None);
+        assert_eq!("bash".parse::<Shell>().unwrap(), Shell::Bash);
+        assert_eq!("ZSH".parse::<Shell>().unwrap(), Shell::Zsh);
+        assert_eq!("Fish".parse::<Shell>().unwrap(), Shell::Fish);
+        assert!("powershell".parse::<Shell>().is_err());
     }
 
     #[test]
