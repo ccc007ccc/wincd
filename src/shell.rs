@@ -60,6 +60,7 @@ wcd() {
     fi
     cd "$path"
 }
+# wincd integration end
 "#;
 
 const ZSH_INIT: &str = r#"
@@ -73,6 +74,7 @@ wcd() {
     fi
     cd "$path"
 }
+# wincd integration end
 "#;
 
 const FISH_INIT: &str = r#"
@@ -85,6 +87,7 @@ function wcd
     end
     cd $path
 end
+# wincd integration end
 "#;
 
 #[cfg(test)]

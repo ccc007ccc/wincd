@@ -265,20 +265,24 @@ fn do_uninstall() -> Result<()> {
 
     if rc_file.exists() {
         let content = std::fs::read_to_string(&rc_file)?;
-        let marker = "# wincd integration";
-        if let Some(start) = content.find(marker) {
-            // 找到 marker 位置，向前找到段落开头（空行）
+        let start_marker = "# wincd integration";
+        let end_marker = "# wincd integration end";
+        if let Some(start) = content.find(start_marker) {
+            // 找到开始 marker 前的空行
             let before = &content[..start];
-            let trim_end = before.trim_end().len();
-            // 从 marker 开始向下找到段落结尾（下一个空行或文件结尾）
-            let after_marker = &content[start..];
-            let end_offset = after_marker
-                .find("\n\n")
-                .map(|i| i + 2)
-                .unwrap_or(after_marker.len());
-
-            let new_content = format!("{}{}", &content[..trim_end], &after_marker[end_offset..]);
-            std::fs::write(&rc_file, new_content)?;
+            let trim_start = before.trim_end().len();
+            // 找到结束 marker 行尾
+            let after_start = &content[start..];
+            if let Some(end_pos) = after_start.find(end_marker) {
+                let end = start + end_pos + end_marker.len();
+                // 跳过结束 marker 后面的换行
+                let end = content[end..]
+                    .strip_prefix('\n')
+                    .map(|_| end + 1)
+                    .unwrap_or(end);
+                let new_content = format!("{}{}", &content[..trim_start], &content[end..]);
+                std::fs::write(&rc_file, new_content)?;
+            }
             eprintln!(
                 "{} 已从 {} 移除 shell 集成",
                 "成功:".green().bold(),
