@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use owo_colors::OwoColorize;
+use std::io::Write;
+use std::path::PathBuf;
 
 use wincd::clipboard;
 use wincd::converter::{Converter, Direction};
@@ -41,6 +43,10 @@ struct Cli {
     #[arg(long = "init", value_name = "SHELL")]
     init: Option<String>,
 
+    /// 一键配置 shell 集成和补全（自动检测当前 shell）
+    #[arg(long = "setup")]
+    setup: bool,
+
     /// 禁用彩色输出
     #[arg(long = "no-color")]
     no_color: bool,
@@ -61,6 +67,11 @@ fn run() -> Result<()> {
         let sh: shell::Shell = shell_name.parse().map_err(|e: String| anyhow::anyhow!(e))?;
         print!("{}", shell::init_script(sh));
         return Ok(());
+    }
+
+    // 处理 --setup
+    if cli.setup {
+        return do_setup();
     }
 
     // 获取输入路径：参数 或 剪贴板
@@ -106,6 +117,117 @@ fn run() -> Result<()> {
         // 输出最终路径（供 shell wrapper 的 cd 使用）
         println!("{}", resolved.path.display());
     }
+
+    Ok(())
+}
+
+/// 一键配置 shell 集成和补全
+fn do_setup() -> Result<()> {
+    // 检测当前 shell
+    let shell_path = std::env::var("SHELL").unwrap_or_default();
+    let sh = if shell_path.contains("zsh") {
+        shell::Shell::Zsh
+    } else if shell_path.contains("fish") {
+        shell::Shell::Fish
+    } else {
+        shell::Shell::Bash
+    };
+
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("无法获取 home 目录"))?;
+
+    eprintln!("{} 检测到 shell: {:?}", "信息:".green().bold(), sh);
+
+    // 写入 shell 集成到 rc 文件
+    let (rc_file, marker) = match sh {
+        shell::Shell::Bash => (home.join(".bashrc"), "# wincd integration"),
+        shell::Shell::Zsh => (home.join(".zshrc"), "# wincd integration"),
+        shell::Shell::Fish => (
+            home.join(".config/fish/conf.d/wincd.fish"),
+            "# wincd integration",
+        ),
+    };
+
+    let init_code = shell::init_script(sh);
+
+    // 读取现有内容，检查是否已配置
+    let existing = std::fs::read_to_string(&rc_file).unwrap_or_default();
+    if existing.contains(marker) {
+        eprintln!(
+            "{} {} 已配置，跳过",
+            "信息:".green().bold(),
+            rc_file.display()
+        );
+    } else {
+        // 确保父目录存在
+        if let Some(parent) = rc_file.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&rc_file)?;
+
+        writeln!(file, "\n{}", marker)?;
+        writeln!(file, "{}", init_code)?;
+        eprintln!(
+            "{} 已写入 shell 集成到 {}",
+            "成功:".green().bold(),
+            rc_file.display()
+        );
+    }
+
+    // 安装补全脚本
+    let (completion_src, completion_dest) = match sh {
+        shell::Shell::Bash => {
+            let d = home.join(".local/share/bash-completion/completions/wincd");
+            ("completions/wincd.bash", d)
+        }
+        shell::Shell::Zsh => {
+            let d = home.join(".zfunc/_wincd");
+            ("completions/wincd.zsh", d)
+        }
+        shell::Shell::Fish => {
+            let d = home.join(".config/fish/completions/wincd.fish");
+            ("completions/wincd.fish", d)
+        }
+    };
+
+    // 尝试从二进制同目录查找补全文件
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let completion_path = exe_dir.join(completion_src);
+
+    if completion_path.exists() {
+        if let Some(parent) = completion_dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(&completion_path, &completion_dest)?;
+        eprintln!(
+            "{} 已安装补全脚本到 {}",
+            "成功:".green().bold(),
+            completion_dest.display()
+        );
+    } else {
+        eprintln!(
+            "{} 补全脚本 {} 未找到（不影响使用）",
+            "提示:".yellow().bold(),
+            completion_src
+        );
+    }
+
+    eprintln!();
+    eprintln!("{} 请运行以下命令使配置生效:", "提示:".cyan().bold());
+    match sh {
+        shell::Shell::Fish => eprintln!("  source {}", rc_file.display()),
+        _ => eprintln!("  source {}", rc_file.display()),
+    }
+    eprintln!();
+    eprintln!("之后就可以直接使用 wcd 命令了:");
+    eprintln!("  wcd 'C:\\code\\Rust'");
 
     Ok(())
 }

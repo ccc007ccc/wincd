@@ -70,18 +70,12 @@ main() {
         echo ""
         echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
         echo ""
-        echo "然后运行:"
-        echo "  source ~/.bashrc  # 或 source ~/.zshrc"
-        echo ""
     fi
 
-    # 提示 shell 集成
+    # 自动配置 shell 集成
     echo ""
-    info "要启用 wcd 命令（推荐），请运行:"
-    echo ""
-    echo "  echo 'eval \"\$(wincd --init bash)\"' >> ~/.bashrc"
-    echo ""
-    info "支持的 shell: bash, zsh, fish"
+    info "正在配置 shell 集成..."
+    "${INSTALL_DIR}/wincd" --setup || warn "自动配置失败，请手动运行: wincd --setup"
 }
 
 main "$@"
