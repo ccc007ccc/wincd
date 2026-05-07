@@ -168,17 +168,17 @@ wincd will use `/drv/c/...` instead of `/mnt/c/...`.
 
 ## Shell completions
 
-Generate shell completion scripts:
+Completion scripts are provided in the `completions/` directory:
 
 ```bash
 # bash
-wincd --init bash > ~/.local/share/bash-completion/completions/wincd
+cp completions/wincd.bash ~/.local/share/bash-completion/completions/wincd
 
 # zsh
-wincd --init zsh > ~/.zfunc/_wincd
+cp completions/wincd.zsh ~/.zfunc/_wincd
 
 # fish
-wincd --init fish > ~/.config/fish/completions/wincd.fish
+cp completions/wincd.fish ~/.config/fish/completions/wincd.fish
 ```
 
 ## License

@@ -11,19 +11,14 @@ permissions:
 jobs:
   build:
     name: 构建 ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            asset_prefix: linux-amd64
+            asset_name: wincd-linux-amd64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            asset_prefix: linux-arm64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            asset_prefix: windows-amd64
+            asset_name: wincd-linux-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -52,29 +47,18 @@ jobs:
       - name: 构建
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: 整理产物 (Linux)
-        if: runner.os == 'Linux'
+      - name: 整理产物
         run: |
-          cp target/${{ matrix.target }}/release/wincd wincd-${{ matrix.asset_prefix }}
-          cp target/${{ matrix.target }}/release/wcd wcd-${{ matrix.asset_prefix }}
-          sha256sum wincd-${{ matrix.asset_prefix }} > wincd-${{ matrix.asset_prefix }}.sha256
-          sha256sum wcd-${{ matrix.asset_prefix }} > wcd-${{ matrix.asset_prefix }}.sha256
-
-      - name: 整理产物 (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cp target/${{ matrix.target }}/release/wincd.exe wincd-${{ matrix.asset_prefix }}.exe
-          cp target/${{ matrix.target }}/release/wcd.exe wcd-${{ matrix.asset_prefix }}.exe
-          certutil -hashfile wincd-${{ matrix.asset_prefix }}.exe SHA256 > wincd-${{ matrix.asset_prefix }}.exe.sha256
-          certutil -hashfile wcd-${{ matrix.asset_prefix }}.exe SHA256 > wcd-${{ matrix.asset_prefix }}.exe.sha256
+          cp target/${{ matrix.target }}/release/wincd ${{ matrix.asset_name }}
+          sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.asset_prefix }}
+          name: ${{ matrix.asset_name }}
           path: |
-            wincd-*
-            wcd-*
+            ${{ matrix.asset_name }}
+            ${{ matrix.asset_name }}.sha256
 
   release:
     name: 创建 Release
@@ -92,7 +76,6 @@ jobs:
         run: |
           mkdir -p release
           find artifacts -type f -exec cp {} release/ \;
-          ls -la release/
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2

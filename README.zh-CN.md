@@ -166,17 +166,17 @@ wincd 会自动使用 `/drv/c/...` 而不是 `/mnt/c/...`。
 
 ## Shell 补全
 
-安装后可生成 shell 补全脚本：
+项目 `completions/` 目录下提供了 bash、zsh、fish 的补全脚本：
 
 ```bash
 # bash
-wincd --init bash > ~/.local/share/bash-completion/completions/wincd
+cp completions/wincd.bash ~/.local/share/bash-completion/completions/wincd
 
 # zsh
-wincd --init zsh > ~/.zfunc/_wincd
+cp completions/wincd.zsh ~/.zfunc/_wincd
 
 # fish
-wincd --init fish > ~/.config/fish/completions/wincd.fish
+cp completions/wincd.fish ~/.config/fish/completions/wincd.fish
 ```
 
 ## 许可证
