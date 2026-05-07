@@ -32,7 +32,7 @@ You can even read paths straight from the clipboard — copy a path in Windows E
 - **Direct cd**: shell integration for real directory switching
 - **Path validation**: checks existence, suggests fuzzy matches
 - **Reverse conversion**: WSL path → Windows path
-- **Shell completions**: bash, zsh, fish
+- **One-command setup/uninstall**: `--setup` to configure, `--uninstall` to clean up
 - **Pure Rust**: zero external dependencies, just compile and go
 
 ## Installation
@@ -43,9 +43,11 @@ You can even read paths straight from the clipboard — copy a path in Windows E
 curl -fsSL https://raw.githubusercontent.com/ccc007ccc/wincd/main/install.sh | sh
 ```
 
+The script downloads the binary and runs `--setup` automatically. Run `source ~/.bashrc` afterwards to use `wcd`.
+
 ### Download from GitHub Releases
 
-Head to the [Releases](https://github.com/ccc007ccc/wincd/releases) page and grab the binary for your platform.
+Head to the [Releases](https://github.com/ccc007ccc/wincd/releases) page, then run `wincd --setup`.
 
 ### Build from source
 
@@ -54,12 +56,14 @@ git clone https://github.com/ccc007ccc/wincd.git
 cd wincd
 cargo build --release
 cp target/release/wincd ~/.local/bin/
+wincd --setup
 ```
 
 ### Via cargo
 
 ```bash
 cargo install wincd
+wincd --setup
 ```
 
 ## Quick Start
@@ -90,10 +94,11 @@ wincd
 
 ### Shell integration (recommended)
 
-Add to your `~/.bashrc` or `~/.zshrc`:
+One-command setup — auto-detects your shell, writes integration code and completions:
 
 ```bash
-eval "$(wincd --init bash)"
+wincd --setup
+source ~/.bashrc  # or source ~/.zshrc
 ```
 
 Then use `wcd` directly:
@@ -105,7 +110,13 @@ wcd 'C:\code\Rust'
 wcd  # no args = read from clipboard
 ```
 
-Supported shells: `bash`, `zsh`, `fish`
+### Uninstall
+
+```bash
+wincd --uninstall
+```
+
+Removes shell integration, completions, and optionally the binary.
 
 ### Reverse conversion
 
@@ -149,6 +160,8 @@ Options:
   -f, --force         Skip path existence check
   -v, --verbose       Show conversion details
   --init <SHELL>      Print shell integration code [bash, zsh, fish]
+  --setup             One-command shell integration and completion setup
+  --uninstall         Remove shell integration, completions, and binary
   --no-color          Disable colored output
   -h, --help          Show help
   -V, --version       Show version
@@ -165,21 +178,6 @@ root = /drv
 ```
 
 wincd will use `/drv/c/...` instead of `/mnt/c/...`.
-
-## Shell completions
-
-Completion scripts are provided in the `completions/` directory:
-
-```bash
-# bash
-cp completions/wincd.bash ~/.local/share/bash-completion/completions/wincd
-
-# zsh
-cp completions/wincd.zsh ~/.zfunc/_wincd
-
-# fish
-cp completions/wincd.fish ~/.config/fish/completions/wincd.fish
-```
 
 ## License
 

@@ -28,34 +28,24 @@ detect_arch() {
     esac
 }
 
-# 获取最新版本号
-get_latest_version() {
-    local version
-    version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
-    if [ -z "$version" ]; then
-        error "无法获取最新版本号，请检查网络连接"
-    fi
-    echo "$version"
-}
-
 main() {
-    local arch version asset_name download_url
+    local arch asset_name download_url
     arch=$(detect_arch)
 
     info "检测到架构: ${arch}"
 
-    version=$(get_latest_version)
-    info "最新版本: ${version}"
-
     asset_name="wincd-linux-${arch}"
-    download_url="https://github.com/${REPO}/releases/download/${version}/${asset_name}"
+    # 使用 releases/latest/download 自动跟随最新 release，无需调用 API
+    download_url="https://github.com/${REPO}/releases/latest/download/${asset_name}"
 
     # 创建安装目录
     mkdir -p "$INSTALL_DIR"
 
     # 下载 wincd
     info "下载 ${asset_name}..."
-    curl -fsSL "$download_url" -o "${INSTALL_DIR}/wincd"
+    if ! curl -fSL "$download_url" -o "${INSTALL_DIR}/wincd" 2>&1; then
+        error "下载失败，请检查网络连接或手动前往 https://github.com/${REPO}/releases 下载"
+    fi
     chmod +x "${INSTALL_DIR}/wincd"
 
     info "安装完成: ${INSTALL_DIR}/wincd"
@@ -75,7 +65,7 @@ main() {
     # 自动配置 shell 集成
     echo ""
     info "正在配置 shell 集成..."
-    "${INSTALL_DIR}/wincd" --setup || warn "自动配置失败，请手动运行: wincd --setup"
+    "${INSTALL_DIR}/wincd" --setup
 }
 
 main "$@"

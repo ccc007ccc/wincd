@@ -30,7 +30,7 @@ wcd 'C:\Users\foo\Documents\Projects'
 - **直接 cd**：通过 shell 集成实现真正的目录切换
 - **路径存在性检查**：自动验证目标路径，给出模糊匹配建议
 - **反向转换**：WSL 路径 → Windows 路径
-- **Shell 补全**：支持 bash、zsh、fish 自动补全
+- **一键配置/卸载**：`--setup` 自动配置，`--uninstall` 干净卸载
 - **纯 Rust 实现**：零外部依赖，编译即用
 
 ## 安装
@@ -41,9 +41,11 @@ wcd 'C:\Users\foo\Documents\Projects'
 curl -fsSL https://raw.githubusercontent.com/ccc007ccc/wincd/main/install.sh | sh
 ```
 
+安装脚本会自动下载二进制并配置 shell 集成。安装完成后运行 `source ~/.bashrc` 即可使用 `wcd` 命令。
+
 ### 从 GitHub Release 下载
 
-前往 [Releases](https://github.com/ccc007ccc/wincd/releases) 页面下载对应平台的二进制文件。
+前往 [Releases](https://github.com/ccc007ccc/wincd/releases) 页面下载对应架构的二进制文件，然后手动运行 `wincd --setup` 配置 shell 集成。
 
 ### 从源码编译
 
@@ -52,12 +54,14 @@ git clone https://github.com/ccc007ccc/wincd.git
 cd wincd
 cargo build --release
 cp target/release/wincd ~/.local/bin/
+wincd --setup
 ```
 
 ### 通过 cargo 安装
 
 ```bash
 cargo install wincd
+wincd --setup
 ```
 
 ## 快速开始
@@ -88,13 +92,14 @@ wincd
 
 ### 3. Shell 集成（推荐）
 
-添加到你的 `~/.bashrc` 或 `~/.zshrc`：
+一键配置，自动检测 shell 类型，写入集成代码和补全脚本：
 
 ```bash
-eval "$(wincd --init bash)"
+wincd --setup
+source ~/.bashrc  # 或 source ~/.zshrc
 ```
 
-然后就可以直接用 `wcd` 命令：
+之后就可以直接用 `wcd` 命令：
 
 ```bash
 wcd 'C:\code\Rust'
@@ -103,9 +108,15 @@ wcd 'C:\code\Rust'
 wcd  # 无参数 = 从剪贴板读取
 ```
 
-支持的 shell：`bash`、`zsh`、`fish`
+### 4. 卸载
 
-### 4. 反向转换
+```bash
+wincd --uninstall
+```
+
+自动移除 shell 集成代码、补全脚本，可选删除二进制。
+
+### 5. 反向转换
 
 ```bash
 # WSL → Windows
@@ -117,7 +128,7 @@ wincd -m /home/user/projects
 # 输出: C:/Users/.../home/user/projects
 ```
 
-### 5. 路径不存在时
+### 6. 路径不存在时
 
 ```bash
 wincd 'C:\Users\foo\NonExistent'
@@ -147,6 +158,8 @@ wincd [OPTIONS] [PATH]
   -f, --force         跳过路径存在性检查
   -v, --verbose       显示转换详情
   --init <SHELL>      输出 shell 集成代码 [bash, zsh, fish]
+  --setup             一键配置 shell 集成和补全
+  --uninstall         卸载：移除 shell 集成、补全脚本和二进制
   --no-color          禁用彩色输出
   -h, --help          显示帮助
   -V, --version       显示版本
@@ -163,21 +176,6 @@ root = /drv
 ```
 
 wincd 会自动使用 `/drv/c/...` 而不是 `/mnt/c/...`。
-
-## Shell 补全
-
-项目 `completions/` 目录下提供了 bash、zsh、fish 的补全脚本：
-
-```bash
-# bash
-cp completions/wincd.bash ~/.local/share/bash-completion/completions/wincd
-
-# zsh
-cp completions/wincd.zsh ~/.zfunc/_wincd
-
-# fish
-cp completions/wincd.fish ~/.config/fish/completions/wincd.fish
-```
 
 ## 许可证
 
